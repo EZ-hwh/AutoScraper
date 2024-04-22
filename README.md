@@ -3,6 +3,7 @@
 This is the official code for paper *"AutoCrawler: A Progressive Understanding Web Agent for Web
 Crawler Generation"*. In this work, we ask large language model (LLMs)
 
+![](asset/Framework.png)
 ## Setup 
 ```bash
 # Clone the AutoCrawler repository
