@@ -11,7 +11,7 @@ This is the official code for paper *"AutoCrawler: A Progressive Understanding W
 Crawler Generation"*.
 
 
-![](asset/Framework.png)
+![](assets/Framework.png)
 ## Setup 
 ```bash
 # Clone the AutoCrawler repository
