@@ -1,7 +1,7 @@
 # AutoCrawler
 
 <div align="center">
-    <a href="https://arxiv.org/abs/2404.12753"><img src="assets/Paper-Arxiv-orange.svg" ></a>
+    <a href="https://arxiv.org/pdf/2404.12753.pdf"><img src="assets/Paper-Arxiv-orange.svg" ></a>
     <a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FEZ-hwh%2FAutoCrawler&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>
     <!-- <a href="https://twitter.com/xuhaiya2483846/status/1654640739010351106"><img src='assets/-twitter-blue.svg'></a> -->
 </div>
