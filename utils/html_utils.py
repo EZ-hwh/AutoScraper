@@ -103,10 +103,8 @@ def parse_accessibility_tree(html, indent='\t'):
         else:
             parse_accessibility_tree()
 
-def forward(xpath):
-    w
-
 if __name__ == '__main__':
+    import requests
     with open('/mnt/data122/harryhuang/swde/sourceCode/university/university-collegeboard(2000)/0435.htm', 'r') as f:
         html_content = f.read()
         html_content = simplify_html(html_content)

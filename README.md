@@ -1,7 +1,15 @@
 # AutoCrawler
 
+<div align="center">
+    <a href="https://arxiv.org/abs/2404.12753"><img src="assets/Paper-Arxiv-orange.svg" ></a>
+    <a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FEZ-hwh%2FAutoCrawler&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>
+    <!-- <a href="https://twitter.com/xuhaiya2483846/status/1654640739010351106"><img src='assets/-twitter-blue.svg'></a> -->
+</div>
+
+
 This is the official code for paper *"AutoCrawler: A Progressive Understanding Web Agent for Web
-Crawler Generation"*. In this work, we ask large language model (LLMs)
+Crawler Generation"*.
+
 
 ![](asset/Framework.png)
 ## Setup 
@@ -12,7 +20,7 @@ git clone https://github.com/EZ-hwh/AutoCrawler
 # Change directory into the cloned repository
 cd AutoCrawler
 
-# Optional: Create a Conda environment for OSWorld
+# Optional: Create a Conda environment for AutoCrawler
 # conda create -n autocrawler python=3.9
 # conda activate autocrawler
 
