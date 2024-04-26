@@ -63,7 +63,7 @@ ex_swde_prompt = {
         'Length': "Please extract the 'Length' of the movie.", 
         'MPAA Rating': "Please extract the 'MPAA Rating' of the movie.", 
         'Released': "Please extract the 'Released' of the movie.", 
-        'Written by': "Please extract the writter of the movie.", 
+        'Written by': "Please extract the writer of the movie.", 
         'topic_entity_name': "Please extract the 'topic_entity_name' of the movie."
     },
     'movie-imdb(2000)' : {
@@ -132,7 +132,7 @@ ex_swde_prompt = {
         'Rated:': "Please extract the Rated of the movie.", 
         'Running Time:': "Please extract the Running Time of the movie.", 
         'Synopsis:': "Please extract the Synopsis of the movie.", 
-        'Written By:': "Please extract the 'Writter of the movie.", 
+        'Written By:': "Please extract the 'Writer of the movie.", 
         'topic_entity_name': "Please extract the 'topic_entity_name' of the movie."
     },
     'movie-yahoo(2000)' : {
