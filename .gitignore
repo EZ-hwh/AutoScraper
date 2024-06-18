@@ -7,6 +7,7 @@ utils/ms_api_copy.py
 dataset/*
 figure/
 
+run.sh
 eval_ds_*.py
 eval_swde_*.py
 extra_*.py
