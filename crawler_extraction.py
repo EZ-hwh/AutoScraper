@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--pattern', type=str, choices=['cot', 'reflexion', 'autocrawler'], help='Which type of crawler generation agent to use.')
 parser.add_argument('--model', type=str, help='Backbone model')
-parser.add_argument('--dataset', type=str, choices=['swde','ds1','extended_swde'], help='Which dataset to test.')
+parser.add_argument('--dataset', type=str, choices=['swde','ds1','extended_swde','klarna'], help='Which dataset to test.')
 parser.add_argument('--seed_website', type=int)
 parser.add_argument('--save_name', type=str)
 parser.add_argument('--overwrite', type=bool, help='Whether overwrite the generated crawler.')
@@ -52,12 +52,11 @@ if dataset == 'swde':
         'restaurant': ['name', 'address', 'phone', 'cuisine'],
         'university': ['name', 'phone', 'website', 'type']
     }
-    DATA_HOME = '/mnt/data122/harryhuang/swde/sourceCode'
-
-    if model == 'ChatGPT':
-        filter_website = ['book-amazon', 'camera-onsale', 'camera-jr', 'camera-compsource', 'camera-buy', 'movie-metacritic', 'movie-rottentomatoes', 'nbaplayer-wiki', 'university-collegenavigator', 'university-matchcollege']
-    else:
-        filter_website = []
+    DATA_HOME = 'data/swde/sourceCode'
+    # if model == 'ChatGPT':
+    #     filter_website = ['book-amazon', 'camera-onsale', 'camera-jr', 'camera-compsource', 'camera-buy', 'movie-metacritic', 'movie-rottentomatoes', 'nbaplayer-wiki', 'university-collegenavigator', 'university-matchcollege']
+    # else:
+    filter_website = []
 elif dataset == 'ds1':
     from run_ds1.task_prompt import ds1_prompt as prompt
     SCHEMA = {
@@ -66,22 +65,36 @@ elif dataset == 'ds1':
         'hotel': ['title', 'price', 'address'],
         'movie': ['title', 'genre', 'actor']
     }
-    DATA_HOME = '/mnt/data122/datasets/Web/FX-dataset/trainingset'
+    DATA_HOME = 'data/ds1/Web/FX-dataset/trainingset'
     if model == 'ChatGPT':
         filter_website = ['shoppings_bestbuy', 'shoppings_pcworld', 'shoppings_uttings', 'shoppings_amazoncouk', 'shoppings_tesco', 'kayak', 'ratestogo', 'expedia', 'hotels', 'venere', 'rottentomatoes', 'metacritic', 'imdb']
     else:
         filter_website = []
 elif dataset == 'extended_swde':
     from run_swde_et.schema import SCHEMA
-    DATA_HOME = '/mnt/data122/harryhuang/swde/sourceCode'
+    DATA_HOME = 'data/swde/sourceCode'
     if model == 'ChatGPT':
         filter_website = ['book-amazon', 'camera-onsale', 'camera-jr', 'camera-compsource', 'camera-buy', 'movie-metacritic', 'movie-rottentomatoes', 'nbaplayer-wiki', 'university-collegenavigator', 'university-matchcollege']
     else:
         filter_website = []
-OUTPUT_HOME = f'dataset/{dataset}/{model}/{PATTERN}'
+elif dataset == 'klarna':
+    from run_klarna.task_prompt import klarna_prompt as prompt
+    SCHEMA = {
+        'product': ['name', 'price'],
+    }
+    filter_website = []
+    DATA_HOME = 'data/klarna_product_page_dataset_WTL_50k/train/US'
 
+if args.save_name:
+    OUTPUT_HOME = f'dataset/{dataset}/{args.save_name}/{PATTERN}'
+else:
+    OUTPUT_HOME = f'dataset/{dataset}/{model}/{PATTERN}'
 
 for field in SCHEMA.keys():
+    tmp_out = f'dataset/{dataset}/ChatGPT_2/{PATTERN}'
+    if not os.path.exists(os.path.join(tmp_out, field)):
+        os.makedirs(os.path.join(tmp_out, field))
+
     if not os.path.exists(os.path.join(OUTPUT_HOME, field)):
         os.makedirs(os.path.join(OUTPUT_HOME, field))
 
@@ -95,19 +108,27 @@ for field in SCHEMA.keys():
         #print(os.path.join(DATA_HOME, field0, field1))
         weblist = glob.glob(os.path.join(DATA_HOME, field0, field))
         weblist = [os.path.join(DATA_HOME, field0, field)]
+    elif dataset == 'klarna':
+        weblist = glob.glob(os.path.join(DATA_HOME, '*'))
 
     for website_path in weblist:
         if dataset in ['extended_swde', 'swde']:
             website_name = website_path.split('/')[-1].split('(')[0]
         elif dataset == 'ds1':
             website_name = website_path.split('/')[-1].replace(f'{field}_','').replace(f'_{fake_item}.html','')
-        #print(website_name)
-        if os.path.exists(os.path.join(OUTPUT_HOME, field, website_name) + '.json'):
+        elif dataset == 'klarna':
+            website_name = website_path.split('/')[-1]
+        
+        print(website_name)
+
+        if os.path.exists(os.path.join(tmp_out, field, website_name) + '.json') and (not overwrite):
+            continue
+
+        if os.path.exists(os.path.join(OUTPUT_HOME, field, website_name) + '.json') and (not overwrite):
             continue
         
         xpath_rule = {}
         # sorted(webpage_list)
-        print(os.path.join(OUTPUT_HOME, field, website_name) + f'_{PATTERN}.json')
         if not os.path.exists(os.path.join(OUTPUT_HOME, field, website_name) + f'_{PATTERN}.json'):
             continue
         with open(os.path.join(OUTPUT_HOME, field, website_name) + f'_{PATTERN}.json', 'r') as f:
@@ -128,7 +149,7 @@ for field in SCHEMA.keys():
                 
                 new_res = {'page': web_index}
                 for item in SCHEMA[field]:
-                    item_value = extract(html, xpath_rule[item])
+                    item_value = extract(html, xpath_rule[item][0])
                     new_res[item] = item_value
 
                     #print(item, item_value)
@@ -143,7 +164,22 @@ for field in SCHEMA.keys():
                 new_res[item] = item_value
 
             result_list.append(new_res)
+        elif dataset == 'klarna':
+            webpage_list = glob.glob(os.path.join(website_path, '*', 'source.html'))
+            for webpage in webpage_list:
+                web_index = webpage.split('/')[-2]
+                with open(webpage, 'r', errors='ignore') as f:
+                    html = f.read()
+                
+                new_res = {'page': web_index}
+                for item in SCHEMA[field]:
+                    item_value = extract(html, xpath_rule[item])
+                    new_res[item] = item_value
 
-        with open(os.path.join(OUTPUT_HOME, field, website_name) + '.json', 'w') as f:
+                    #print(item, item_value)
+                result_list.append(new_res)
+
+        with open(os.path.join(tmp_out, field, website_name) + '.json', 'w') as f:
+        # with open(os.path.join(OUTPUT_HOME, field, website_name) + '.json', 'w') as f:
             json.dump(result_list, f, indent=4)
     

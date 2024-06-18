@@ -1,6 +1,8 @@
 import json, re
 from lxml import etree, html
 from utils.html_utils import simplify_html, find_common_ancestor, get_absolute_xpath
+from utils.step import domlm_parse
+from bs4 import BeautifulSoup
 
 role_prompt = '''Suppose you're a web parser that is good at reading and understanding the HTML code and can give clear executable code on the brower.'''
 crawler_prompt = '''Please read the following HTML code, and then return an Xpath that can recognize the element in the HTML matching the instruction below. 
@@ -64,7 +66,7 @@ judgement_prompt = '''Your main task is to judge whether the extracted value is 
     1) If the extracted result contains some elements that is not in expected value, or contains empty value, it is not consistent.
     2) The raw values containing redundant separators is considered as consistent because we can postprocess it.
 
-The extracted value is: {0}da
+The extracted value is: {0}
 The expected value is: {1}
 
 Please output your judgement in the following Json format:
@@ -133,14 +135,12 @@ class StepbackCrawler:
         else:
             return {key:"" for key in keys}
         
-    def generate_sequence(self,
+    def generate_sequence_html(self,
                           instruction: str,
                           html_content: str,
                           ground_truth=None):
-        
+
         action_sequence = []
-        if self.is_simplify:
-            html_content = simplify_html(html_content)
 
         for _ in range(5):
             print(len(html_content))
@@ -220,28 +220,67 @@ class StepbackCrawler:
             html_content = new_html_content
         return action_sequence
 
+    def generate_sequence(self, instruction, html_content, ground_truth = None, max_token=8000):
+        if self.is_simplify:
+            html_content = simplify_html(html_content)
+        #print(html_content)
+        soup = BeautifulSoup(html_content, 'html.parser')
+        subtree_list = domlm_parse(soup, max_token)
+        print('Page split:', len(subtree_list))
+        rule_list = []
+        for sub_html in subtree_list:
+            page_rule = self.generate_sequence_html(instruction, sub_html, ground_truth)
+            rule_list.append(page_rule)
+        
+        if len(subtree_list) > 1:
+            valid_answer = False
+            for rule in rule_list:
+                if rule != []:
+                    valid_answer = True
+            if not valid_answer:
+                return []
+            extract_result = []
+            for rule in rule_list:
+                sub_extract_result = {'rule':rule}
+                sub_extract_result['extracted result'] = self.extract_with_sequence(html_content, rule)
+                extract_result.append(sub_extract_result)
+            print(json.dumps(extract_result, ensure_ascii=False, indent=4))
+            query = synthesis_prompt.format(instruction, json.dumps(extract_result, indent=4))
+            res = self.request_parse(query, ['thought', 'number'])
+            try:
+                return rule_list[eval(res['number'])]
+            except:
+                return rule_list[0]
+        else:
+            return rule_list[0]
+
     def rule_synthesis(self, 
                        website_name: str,
                        seed_html_set: list[str], 
                        instruction: str, 
                        ground_truth = None,
+                       max_token = 8000,
                        per_page_repeat_time=1):
         rule_list = []
 
         # Collect a rule from each seed webpage
         if ground_truth:
             for html_content, gt in zip(seed_html_set, ground_truth):
-                page_rule = self.generate_sequence(instruction, html_content, gt)
+                page_rule = self.generate_sequence(instruction, html_content, gt, max_token=max_token)
                 rule_list.append(page_rule)
         else:
             for html_content in seed_html_set:
-                page_rule = self.generate_sequence(instruction, html_content)
+                page_rule = self.generate_sequence(instruction, html_content, max_token=max_token)
                 rule_list.append(page_rule)
 
         #rule_list = list(set(rule_list))
         print(rule_list)
         if len(seed_html_set) > 1:
-            if rule_list[0] == rule_list[1] == rule_list[2] == []:
+            valid_answer = False
+            for rule in rule_list:
+                if rule != []:
+                    valid_answer = True
+            if not valid_answer:
                 return []
             extract_result = []
             for rule in rule_list:
@@ -261,6 +300,52 @@ class StepbackCrawler:
         else:
             return rule_list[0]
         
+    def rule_synthesis_cul(self, 
+                       website_name: str,
+                       seed_html_set: list[str], 
+                       instruction: str, 
+                       ground_truth = None,
+                       max_token = 8000,
+                       per_page_repeat_time=1):
+        rule_list_set = []
+        rule_list = []
+
+        # Collect a rule from each seed webpage
+        if ground_truth:
+            for html_content, gt in zip(seed_html_set, ground_truth):
+                page_rule = self.generate_sequence(instruction, html_content, gt, max_token=max_token)
+                rule_list.append(page_rule)
+        else:
+            for html_content in seed_html_set:
+                page_rule = self.generate_sequence(instruction, html_content, max_token=max_token)
+                rule_list.append(page_rule)
+
+        #rule_list = list(set(rule_list))
+        print(rule_list)
+        for webnum in range(2, len(seed_html_set) + 1):
+            valid_answer = False
+            for rule in rule_list[:webnum]:
+                if rule != []:
+                    valid_answer = True
+            if not valid_answer:
+                return []
+            extract_result = []
+            for rule in rule_list[:webnum]:
+                sub_extract_result = {'rule':rule, 'extracted result':[]}
+                for html_content in seed_html_set[:webnum]:
+                    sub_extract_result['extracted result'].append(self.extract_with_sequence(html_content, rule))
+                extract_result.append(sub_extract_result)
+            print('+' * 100)
+            print(f"Systhesis rule for the website {website_name}")
+            print(json.dumps(extract_result, ensure_ascii=False, indent=4))
+            query = synthesis_prompt.format(instruction, json.dumps(extract_result, indent=4))
+            res = self.request_parse(query, ['thought', 'number'])
+            try:
+                rule_list_set.append(rule_list[eval(res['number'])])
+            except:
+                rule_list_set.append(rule_list[0])
+        return rule_list_set
+        
     def extract_with_xpath(self, 
                            html_content:str, 
                            xpath:str) -> list[str]:
@@ -278,7 +363,7 @@ class StepbackCrawler:
         try:
             if xpath.strip():
                 ele = etree.HTML(html_content) # type: ignore
-                return [item if isinstance(item, str) else item.text for item in ele.xpath(xpath)]
+                return [item.strip() if isinstance(item, str) else item.text.strip() for item in ele.xpath(xpath)]
             else:
                 return []
         except:

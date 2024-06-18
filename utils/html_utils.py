@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from lxml import etree
 from lxml.etree import _Element
 import bs4
+import tiktoken
 
 class StepTree:
     def __init__(self, html, step_len = 5000, len_func = len):
@@ -102,6 +103,12 @@ def parse_accessibility_tree(html, indent='\t'):
             pass
         else:
             parse_accessibility_tree()
+
+def num_tokens_from_string(string: str, encoding_name: str) -> int:
+    encoding = tiktoken.get_encoding(encoding_name)
+    #print(string)
+    num_tokens = len(encoding.encode(string))
+    return num_tokens
 
 if __name__ == '__main__':
     import requests

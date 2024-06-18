@@ -6,6 +6,7 @@ utils/*_api.py
 utils/ms_api_copy.py
 dataset/*
 figure/
+module/reflexion_crawler_tmp.py
 
 run.sh
 eval_ds_*.py
@@ -16,3 +17,4 @@ run_swde.json
 split_data_*.py
 test.py
 xpath_generater.py
+crawler_count.py

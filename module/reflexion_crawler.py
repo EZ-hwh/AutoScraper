@@ -2,10 +2,12 @@ from .prompt import *
 import json, re
 from lxml import etree, html
 from utils.html_utils import simplify_html, find_common_ancestor
+from utils.step import domlm_parse
+from bs4 import BeautifulSoup
 
 class AutoCrawler:
     '''
-    AutoCrawler is a LLM-based agent, which generate different kinds of rule, such as Xpath, CSS Selector, code for information extraction and web proning.
+    AutoCrawler is a LLM-based agent, which generate different kinds of rule, such as Xpath, for information extraction and web proning.
     '''
     def __init__(self, 
                  pattern='xpath', 
@@ -16,29 +18,23 @@ class AutoCrawler:
         """Initial an instance of Autocrawler, including setting the pattern of rule 
 
         Args:
-            pattern (str, optional): Which kind of rule pattern will be used. **Options: ['xpath', 'selector', 'code']**. Defaults to 'xpath'.
+            pattern (str, optional): Which kind of rule pattern will be used. **Options: ['reflexion', 'cot']**. Defaults to 'xpath'.
             simplify (bool, optional): Whether to simplify HTML before proprecessing. Defaults to True.
             verbose (bool, optional): Whether print the whole execution process. Defaults to True.
         """
         if api == None:
             raise ValueError("No api has been assigned!!")
         self.api = api
-        if pattern not in ['reflexion', 'selector', 'code', 'cot']:
-            raise AssertionError("Pattern must be one of the following selection: reflexion, selector, code, cot")
+        if pattern not in ['reflexion', 'cot']:
+            raise AssertionError("Pattern must be one of the following selection: reflexion, cot")
         self.rule_pattern = pattern
         self.is_simplify = simplify
         self.verbose = verbose
-        if self.rule_pattern in ['reflexion', 'cot']:
-            self.prompter = Xpath_prompter()
-        elif self.rule_pattern == 'selector':
-            self.prompter = Selector_prompter()
-        else:
-            self.prompter = Code_prompter()
+        self.prompter = Xpath_prompter()
         self.error_max_times = error_max_times
 
     def request_parse(self, 
-                      query: str, 
-                      html: str,
+                      query: str,
                       keys: list[str] = []) -> dict[str, str]:
         """A safe and reliable call to LLMs, which confirm that the output can be parsed by json.loads().
 
@@ -78,24 +74,11 @@ class AutoCrawler:
         histories = []
         for reflection_index in range(reflection_times):
             if ground_truth:
-                if self.rule_pattern == 'reflexion':
-                    history = {
-                        'thought': res['thought'],
-                        'xpath': res['xpath'],
-                        'result': str(self.extract_with_xpath(html_content, res['xpath']))
-                    }
-                elif self.rule_pattern == 'selector':
-                    history = {
-                        'thought': res['thought'],
-                        'selector': res['selector'],
-                        'result': str(self.extract_with_selector(html_content, res['selector']))
-                    }
-                else:
-                    history = {
-                        'thought': res['thought'],
-                        'code': res['code'],
-                        'result': str(self.extract_with_code(html_content, res['code']))
-                    }
+                history = {
+                    'thought': res['thought'],
+                    'xpath': res['xpath'],
+                    'result': str(self.extract_with_xpath(html_content, res['xpath']))
+                }
                 if self.verbose:
                     print(f'Reflexion {reflection_index}:')
                     print(json.dumps(history, indent=4))
@@ -104,36 +87,18 @@ class AutoCrawler:
                 histories.append(history)
                 query = self.prompter.reflection_wr_prompt.format(instruction, ground_truth, json.dumps(histories, indent=4), html_content)
 
-                if self.rule_pattern in ['selector', 'code']:
-                    res = self.request_parse(query, html_content, ['thought', 'consistent', self.rule_pattern])
-                else:
-                    res = self.request_parse(query, html_content, ['thought', 'consistent', 'xpath'])
+                res = self.request_parse(query, ['thought', 'consistent', 'value', 'xpath'])
                 if self.verbose:
                     print(json.dumps(res, indent=4))
                 if res['consistent'].lower() == 'yes':
                     break
             else:
-                if self.rule_pattern == 'reflexion':
-                    history = {
-                        'expected value': res['value'],
-                        'thought': res['thought'],
-                        'xpath': res['xpath'],
-                        'result': str(self.extract_with_xpath(html_content, res['xpath']))
-                    }
-                elif self.rule_pattern == 'selector':
-                    history = {
-                        'expected value': res['value'],
-                        'thought': res['thought'],
-                        'selector': res['selector'],
-                        'result': str(self.extract_with_selector(html_content, res['selector']))
-                    }
-                else:
-                    history = {
-                        'expected value': res['value'],
-                        'thought': res['thought'],
-                        'code': res['code'],
-                        'result': str(self.extract_with_code(html_content, res['code']))
-                    }
+                history = {
+                    'expected value': res['value'],
+                    'thought': res['thought'],
+                    'xpath': res['xpath'],
+                    'result': str(self.extract_with_xpath(html_content, res['xpath']))
+                }
                 if self.verbose:
                     print(f'Reflexion {reflection_index}:')
                     print(json.dumps(history, indent=4))
@@ -141,31 +106,22 @@ class AutoCrawler:
 
                 histories.append(history)
                 query = self.prompter.reflection_prompt.format(instruction, json.dumps(histories, indent=4), html_content)
-
-                if self.rule_pattern in ['selector', 'code']:
-                    res = self.request_parse(query, html_content, ['thought', 'consistent', self.rule_pattern])
-                else:
-                    res = self.request_parse(query, html_content, ['thought', 'consistent', 'xpath'])
+                res = self.request_parse(query, ['thought', 'consistent', 'value', 'xpath'])
 
                 if self.verbose:
                     print(json.dumps(res, indent=4))
                 if res['consistent'].lower() == 'yes':
                     break
         if res['consistent'] == 'yes':
-            if self.rule_pattern == 'reflexion':
-                return res['xpath']
-            elif self.rule_pattern == 'selector':
-                return res['selector']
-            else:
-                return res['code']
+            return res['xpath']
         else:
             return ''
 
-    def generate_rule(self, 
+    def generate_rule_html(self, 
                       instruction: str, 
                       html_content: str, 
                       ground_truth = None,
-                      repeat_times = 3,
+                      repeat_times = 1,
                       with_reflection=True, 
                       reflection_times=3) -> str:
         """Generate rule by asking LLM with an instruction and HTML code.
@@ -198,13 +154,9 @@ class AutoCrawler:
                     print()
 
                 # An full execution for generating a rule
-                #print(query)
-                if self.rule_pattern in ['selector', 'code']:
-                    res = self.request_parse(query, html_content, ['thought', self.rule_pattern])
-                elif self.rule_pattern in ['reflexion', 'cot']:
-                    res = self.request_parse(query, html_content, ['thought', 'xpath'])
+                res = self.request_parse(query, ['thought', 'xpath'])
 
-                if self.rule_pattern in ['reflexion', 'selector', 'code']:
+                if self.rule_pattern in ['reflexion']:
                     rule_list.append(self.reflexion_generate(res, instruction, html_content, ground_truth))
                 else:
                     rule_list.append(res['xpath'])
@@ -220,12 +172,8 @@ class AutoCrawler:
 
                 # An full execution for generating a rule
                 #print(query)
-                if self.rule_pattern in ['xpath', 'selector', 'code']:
-                    res = self.request_parse(query, html_content, ['thought', 'value', self.rule_pattern])
-                else:
-                    res = self.request_parse(query, html_content, ['thought', 'value', 'xpath'])
-
-                if self.rule_pattern in ['reflexion', 'selector', 'code']:
+                res = self.request_parse(query, ['thought', 'value', 'xpath'])
+                if self.rule_pattern in ['reflexion']:
                     rule_list.append(self.reflexion_generate(res, instruction, html_content))
                 else:
                     rule_list.append(res['xpath'])
@@ -234,47 +182,69 @@ class AutoCrawler:
         if repeat_times > 1:
             ret_dict = {}
             for xpath in rule_list:
-                if self.rule_pattern in ['reflexion', 'cot']:
-                    ret_dict[xpath] = self.extract_with_xpath(html_content, xpath)
-                elif self.rule_pattern == 'selector':
-                    ret_dict[xpath] = self.extract_with_selector(html_content, xpath)
-                elif self.rule_pattern == 'code':
-                    ret_dict[xpath] = self.extract_with_code(html_content, xpath)
+                ret_dict[xpath] = self.extract_with_xpath(html_content, xpath)
             query = self.prompter.comparison_prompt.format(instruction, json.dumps(ret_dict, ensure_ascii=False, indent=4))
             if self.verbose:
                 print('-'*50)
                 print(f'Choose one of the best {self.rule_pattern} for a single HTML:')
                 #print(query)
-            res = self.request_parse(query, html_content, ['thought', self.rule_pattern])
-            if self.rule_pattern in ['reflexion', 'cot']:
-                rule = res['xpath']
-            elif self.rule_pattern == 'selector':
-                rule = res['selector']
-            else:
-                rule = res['code']
+            res = self.request_parse(query, ['thought', 'xpath'])
+            rule = res['xpath']
         else:
             rule = rule_list[0]
         if self.verbose:
             print(f'Generated {self.rule_pattern} for the webpage')
             print(self.rule_pattern, ':', res)
         return rule
+
+    def generate_rule(self, instruction, html_content, ground_truth = None, max_token=8000):
+        if self.is_simplify:
+            html_content = simplify_html(html_content)
+        #print(html_content)
+        soup = BeautifulSoup(html_content, 'html.parser')
+        subtree_list = domlm_parse(soup, max_token)
+        print('Page split:', len(subtree_list))
+        rule_list = []
+        for sub_html in subtree_list:
+            page_rule = self.generate_rule_html(instruction, sub_html, ground_truth)
+            rule_list.append(page_rule)
+
+        if len(subtree_list) > 1:
+            valid_answer = False
+            for rule in rule_list:
+                if rule != []:
+                    valid_answer = True
+            if not valid_answer:
+                return []
+            extract_result = []
+            for rule in rule_list:
+                sub_extract_result = {'rule':rule}
+                sub_extract_result['extracted result'] = self.extract_with_xpath(html_content, rule)
+                extract_result.append(sub_extract_result)
+            print(json.dumps(extract_result, ensure_ascii=False, indent=4))
+            query = self.prompter.synthesis_prompt.format(instruction, json.dumps(extract_result, indent=4))
+            res = self.request_parse(query, ['thought', 'xpath'])
+            return res['xpath']
+        else:
+            return rule_list[0]
     
     def rule_synthesis(self, 
                        website_name: str,
                        seed_html_set: list[str], 
                        instruction: str, 
                        ground_truth = None,
+                       max_token = 8000,
                        per_page_repeat_time=1) -> str:
         rule_list = []
 
         # Collect a rule from each seed webpage
         if ground_truth:
             for html, gt in zip(seed_html_set, ground_truth):
-                page_rule = self.generate_rule(instruction, html, gt, repeat_times=per_page_repeat_time)
+                page_rule = self.generate_rule(instruction, html, gt, max_token=max_token)
                 rule_list.append(page_rule)
         else:
             for html in seed_html_set:
-                page_rule = self.generate_rule(instruction, html, repeat_times=per_page_repeat_time)
+                page_rule = self.generate_rule(instruction, html, max_token=max_token)
                 rule_list.append(page_rule)
 
         #rule_list = list(set(rule_list))
@@ -283,21 +253,11 @@ class AutoCrawler:
             # Parse the webpage with each rule
             extract_result = []
             for rule in rule_list:
-                if self.rule_pattern in ['selector', 'code']:
-                    sub_extract_result = {self.rule_pattern: rule, 'extracted result':[]}
-                elif self.rule_pattern in ['reflexion', 'cot']:
-                    sub_extract_result = {'xpath': rule, 'extracted result': []}
-                else:
-                    if not rule or rule[0] == False:
-                        continue
-                    sub_extract_result = {'rule':rule[1], 'extracted result':[]}
+                
+                sub_extract_result = {'xpath': rule, 'extracted result': []}
+                
                 for html in seed_html_set:
-                    if self.rule_pattern in ['reflexion', 'cot']:
-                        sub_extract_result['extracted result'].append(self.extract_with_xpath(html, rule))
-                    elif self.rule_pattern == 'selector':
-                        sub_extract_result['extracted result'].append(self.extract_with_selector(html, rule))
-                    elif self.rule_pattern == 'code':
-                        sub_extract_result['extracted result'].append(self.extract_with_code(html, rule))
+                    sub_extract_result['extracted result'].append(self.extract_with_xpath(html, rule))
                 extract_result.append(sub_extract_result)
 
             if self.verbose:
@@ -306,24 +266,12 @@ class AutoCrawler:
                 print(json.dumps(extract_result, ensure_ascii=False, indent=4))
 
             # Sythesis the rule
-            if self.rule_pattern in ['selector', 'code']:
-                query = self.prompter.synthesis_prompt.format(instruction, json.dumps(extract_result, indent=4))
-                res = self.request_parse(query, seed_html_set[0], ['thought', self.rule_pattern])
-            elif self.rule_pattern in ['reflexion', 'cot']:
-                query = self.prompter.synthesis_prompt.format(instruction, json.dumps(extract_result, indent=4))
-                res = self.request_parse(query, seed_html_set[0], ['thought', 'xpath'])
+            query = self.prompter.synthesis_prompt.format(instruction, json.dumps(extract_result, indent=4))
+            res = self.request_parse(query, ['thought', 'xpath'])
             if self.verbose:
                 print(f'Systhesis rule:')
                 print(res)
-
-            if self.rule_pattern in ['reflexion', 'cot']:
-                return res['xpath']
-            elif self.rule_pattern == 'selector':
-                return res['selector']
-            elif self.rule_pattern == 'code':
-                return res['code']
-            else:
-                return rule_list[eval(res['number'])]
+            return res['xpath']
         else:
             return rule_list[0]
 
@@ -345,71 +293,8 @@ class AutoCrawler:
             if xpath.strip():
                 ele = etree.HTML(html_content) # type: ignore
                 #return [item.text for item in ele.xpath(xpath)]
-                return [item if isinstance(item, str) else item.text for item in ele.xpath(xpath)]
+                return [item.strip() if isinstance(item, str) else item.text.strip() for item in ele.xpath(xpath)]
             else:
                 return []
         except:
-            return []
-        
-    def extract_with_seq(self,
-                         html_content:str,
-                         xpath_seq:str) -> list[str]:
-        if self.is_simplify:
-            html_content = simplify_html(html_content)
-        if xpath_seq == []:
-            return []
-        else:
-            for xpath, action in xpath_seq:
-                ele = etree.HTML(html_content)
-                if action == 'Accept':
-                    return [item if isinstance(item, str) else item.text for item in ele.xpath(xpath)]
-                elif action == 'Re-thinking':
-                    html_content = find_common_ancestor(html_content, xpath)
-                elif action == 'Re-generate':
-                    pass
-
-    def extract_with_selector(self, 
-                              html_content: str,
-                              selector:str) -> list[str]:
-        """CSS Selector parser
-
-        Args:
-            html_content (str): text of HTML
-            selector (str): the string of CSS selector
-
-        Returns:
-            list[str]: result list extracted by css selector
-        """
-        if self.is_simplify:
-            html_content = simplify_html(html_content)
-        if selector.strip():
-            tree = html.fromstring(html_content)
-            #return [item.text for item in ele.xpath(xpath)]
-            #print([item if isinstance(item, str) else item.text for item in tree.cssselect(selector)])
-            return [item if isinstance(item, str) else item.text for item in tree.cssselect(selector)]
-        else:
-            return []
-
-    def extract_with_code(self,
-                          html_content: str,
-                          code: str) -> list[str]:
-        """Code parser
-
-        Args:
-            html_content (str): _description_
-            code (str): _description_
-
-        Returns:
-            list[str]: _description_
-        """
-
-        if self.is_simplify:
-            html_content = simplify_html(html_content)
-
-        if code.strip():
-            #print(code)
-            exec(code, globals())
-            extracted_value = extract_value(html_content)
-            return extracted_value
-        else:
             return []
