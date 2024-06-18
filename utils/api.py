@@ -2,7 +2,11 @@ import openai
 from openai import OpenAI
 import httpx
 
+<<<<<<< HEAD
 OPENAI_API_KEY='...'
+=======
+OPENAI_API_KEY=''
+>>>>>>> 97db424 (Update Long HTML DOM processor & Klarna dataset)
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 def chatgpt(query):
