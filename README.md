@@ -1,4 +1,4 @@
-# AutoCrawler
+# AutoScraper
 
 <div align="center">
     <a href="https://arxiv.org/pdf/2404.12753.pdf"><img src="assets/Paper-Arxiv-orange.svg" ></a>
